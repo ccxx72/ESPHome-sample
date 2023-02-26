@@ -1,0 +1,144 @@
+# Thanks to Omar Ghader (https://omarghader.github.io/esp32-airquality-box-wp6003-homeassistant/)
+esphome:
+  name: airq_wp6003
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  password: ""
+
+ota:
+  password: ""
+
+wifi:
+  ssid: ""
+  password: ""
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Airq Wp6003 Fallback Hotspot"
+    password: "cyaxaupM21yX"
+
+captive_portal:
+
+You have to choose webserver or a graph because memory usage
+# web_server:
+#   local: true
+
+# Enable Bluetooth scanning for this ESP32
+esp32_ble_tracker:
+
+# CHANGE mac_address to your airquality box wp6003
+ble_client:
+  - mac_address: WP6003 MAC Address
+    id: airquality
+
+sensor:
+  - platform: template
+    name: "AirQ temperature"
+    id: airq_temperature
+    device_class: "temperature"
+    state_class: "measurement"
+    unit_of_measurement: "°C"
+  - platform: template
+    name: "CO2"
+    id: airq_co2
+    device_class: "carbon_dioxide"
+    state_class: "measurement"
+    unit_of_measurement: "ppm"
+  - platform: template
+    name: "TVOC"
+    id: airq_tvoc
+    state_class: "measurement"
+    unit_of_measurement: "mg/m3"
+  - platform: template
+    name: "HCHO"
+    id: airq_hcho
+    state_class: "measurement"
+    unit_of_measurement: "mg/m3"
+
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: airquality
+    name: "Airquality level"
+    service_uuid: "fff0"
+    characteristic_uuid: "fff4"
+    icon: "mdi:air"
+    update_interval: never
+    notify: true
+    lambda: |-
+      uint8_t* pdata = (uint8_t*) x.data();
+      float temperature =  float((pdata[6] << 8) + pdata[7]) / 10;
+      float tvoc =  float((pdata[10] << 8) + pdata[11]) / 1000;
+      float hcho =  float((pdata[12] << 8) + pdata[13]) / 1000;
+      float co2 =  (pdata[16] << 8) + pdata[17] - 150;
+      id(airq_temperature).publish_state(temperature);
+      id(airq_hcho).publish_state(hcho);
+      id(airq_tvoc).publish_state(tvoc);
+      id(airq_co2).publish_state(co2);
+      return (float)x.size();      
+
+font:
+- file: "gfonts://Roboto"
+  id: roboto
+  size: 10
+- file: "gfonts://Roboto"
+  id: roboto15
+  size: 15
+- file: "gfonts://Roboto"
+  id: roboto20
+  size: 20
+
+i2c:
+  sda: 5
+  scl: 23
+
+graph:
+  - id: single_temperature_graph
+    sensor: airq_tvoc
+    duration: 1h
+    width: 120
+    height: 45
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    id: my_display
+    address: 0x3C
+    pages:
+      - id: page1
+        lambda: |-
+          it.printf(0, 15, id(roboto20), "CO2:", TextAlign::CENTER_LEFT);
+          it.printf(0, 40, id(roboto20), "%7.2f ppm",TextAlign::CENTER_LEFT, id(airq_co2).state);
+      - id: page2
+        lambda: |-
+          it.printf(0, 15, id(roboto20), "HCHO:", TextAlign::CENTER_LEFT);
+          it.printf(0, 40, id(roboto20), "%7.2f mg/m3", TextAlign::CENTER_LEFT, id(airq_hcho).state);
+      - id: page3
+        lambda: |-
+          it.printf(0, 15, id(roboto20), "TVOC:", TextAlign::CENTER_LEFT);
+          it.printf(0, 40, id(roboto20), "%7.2f mg/m3", TextAlign::CENTER_LEFT, id(airq_tvoc).state); 
+      - id: page4
+        lambda: |-
+          it.printf(0, 0, id(roboto), "TVOC");
+          it.graph(0, 15, id(single_temperature_graph));     
+
+interval:
+  - interval: 5s
+    then:
+      - display.page.show_next: my_display
+      - component.update: my_display
+
+# MQTT connection
+mqtt:
+  broker: MQTT IP
+  id: airq
+  topic_prefix: "esph_mqtt"
+  client_id: "airq"
