@@ -10,9 +10,9 @@ esp32:
 # Enable logging
 logger:
 
-# Enable Home Assistant API
 api:
-  password: ""
+#Disable rebooting when no client connects to the API
+  reboot_timeout: 0s
 
 ota:
   password: ""
